@@ -1,0 +1,185 @@
+#Requires -Version 5.1
+
+<#
+.SYNOPSIS
+    Displays disk space information for all drives on the system.
+
+.DESCRIPTION
+    This script retrieves and displays comprehensive disk space information including:
+    - Drive letter and label
+    - Total allocated space
+    - Used space
+    - Free space
+    - Usage percentage
+    - File system type
+
+.PARAMETER DriveType
+    Filter drives by type. Valid values: Fixed, Removable, Network, CD-ROM, RAM
+    Default: All drive types
+
+.PARAMETER Format
+    Output format. Valid values: Table, List, CSV
+    Default: Table
+
+.EXAMPLE
+    .\Get-DiskSpace.ps1
+    Shows disk space for all drives in table format
+
+.EXAMPLE
+    .\Get-DiskSpace.ps1 -DriveType Fixed
+    Shows disk space only for fixed drives
+
+.EXAMPLE
+    .\Get-DiskSpace.ps1 -Format List
+    Shows disk space in detailed list format
+
+.NOTES
+    Author: PowerShell Assistant
+    Version: 1.0
+#>
+
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("Fixed", "Removable", "Network", "CD-ROM", "RAM")]
+    [string]$DriveType = "All",
+    
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("Table", "List", "CSV")]
+    [string]$Format = "Table"
+)
+
+function Format-Bytes {
+    param([long]$Size)
+    
+    if ($Size -ge 1TB) {
+        return "{0:N2} TB" -f ($Size / 1TB)
+    }
+    elseif ($Size -ge 1GB) {
+        return "{0:N2} GB" -f ($Size / 1GB)
+    }
+    elseif ($Size -ge 1MB) {
+        return "{0:N2} MB" -f ($Size / 1MB)
+    }
+    else {
+        return "{0:N2} KB" -f ($Size / 1KB)
+    }
+}
+
+function Get-DiskSpaceInfo {
+    try {
+        Write-Host "Retrieving disk space information..." -ForegroundColor Green
+        
+        # Get all drives
+        $drives = Get-WmiObject -Class Win32_LogicalDisk -ErrorAction Stop
+        
+        # Filter by drive type if specified
+        if ($DriveType -ne "All") {
+            $drives = $drives | Where-Object { $_.DriveType -eq [int][System.IO.DriveType]$DriveType }
+        }
+        
+        # Create custom objects with formatted data
+        $diskInfo = @()
+        
+        foreach ($drive in $drives) {
+            if ($drive.Size -gt 0) {  # Only process drives with valid size
+                $usedSpace = $drive.Size - $drive.FreeSpace
+                $usagePercent = if ($drive.Size -gt 0) { [math]::Round(($usedSpace / $drive.Size) * 100, 2) } else { 0 }
+                
+                $diskInfo += [PSCustomObject]@{
+                    Drive = $drive.DeviceID
+                    Label = if ($drive.VolumeName) { $drive.VolumeName } else { "No Label" }
+                    FileSystem = $drive.FileSystem
+                    TotalSize = Format-Bytes -Size $drive.Size
+                    UsedSpace = Format-Bytes -Size $usedSpace
+                    FreeSpace = Format-Bytes -Size $drive.FreeSpace
+                    UsagePercent = "$usagePercent%"
+                    DriveType = [System.IO.DriveType]$drive.DriveType
+                    TotalSizeBytes = $drive.Size
+                    UsedSpaceBytes = $usedSpace
+                }
+            }
+        }
+        
+        return $diskInfo
+    }
+    catch {
+        Write-Error "Failed to retrieve disk information: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Show-DiskSpaceTable {
+    param($DiskInfo)
+    
+    Write-Host "`nDisk Space Information" -ForegroundColor Cyan
+    Write-Host "====================" -ForegroundColor Cyan
+    
+    $DiskInfo | Format-Table -AutoSize -Property @(
+        @{Name="Drive"; Expression={$_.Drive}; Width=6},
+        @{Name="Label"; Expression={$_.Label}; Width=15},
+        @{Name="FileSystem"; Expression={$_.FileSystem}; Width=10},
+        @{Name="Total Size"; Expression={$_.TotalSize}; Width=12; Align="Right"},
+        @{Name="Used Space"; Expression={$_.UsedSpace}; Width=12; Align="Right"},
+        @{Name="Free Space"; Expression={$_.FreeSpace}; Width=12; Align="Right"},
+        @{Name="Usage %"; Expression={$_.UsagePercent}; Width=8; Align="Right"},
+        @{Name="Type"; Expression={$_.DriveType}; Width=10}
+    )
+}
+
+function Show-DiskSpaceList {
+    param($DiskInfo)
+    
+    Write-Host "`nDisk Space Information" -ForegroundColor Cyan
+    Write-Host "====================" -ForegroundColor Cyan
+    
+    foreach ($disk in $DiskInfo) {
+        Write-Host "`nDrive: $($disk.Drive)" -ForegroundColor Yellow
+        Write-Host "  Label: $($disk.Label)"
+        Write-Host "  File System: $($disk.FileSystem)"
+        Write-Host "  Total Size: $($disk.TotalSize)"
+        Write-Host "  Used Space: $($disk.UsedSpace)"
+        Write-Host "  Free Space: $($disk.FreeSpace)"
+        Write-Host "  Usage: $($disk.UsagePercent)"
+        Write-Host "  Type: $($disk.DriveType)"
+    }
+}
+
+function Show-DiskSpaceCSV {
+    param($DiskInfo)
+    
+    $DiskInfo | Export-Csv -Path "DiskSpace_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv" -NoTypeInformation
+    Write-Host "`nDisk space information exported to CSV file." -ForegroundColor Green
+}
+
+# Main execution
+try {
+    $diskInfo = Get-DiskSpaceInfo
+    
+    if ($diskInfo -and $diskInfo.Count -gt 0) {
+        switch ($Format) {
+            "Table" { Show-DiskSpaceTable -DiskInfo $diskInfo }
+            "List" { Show-DiskSpaceList -DiskInfo $diskInfo }
+            "CSV" { Show-DiskSpaceCSV -DiskInfo $diskInfo }
+        }
+        
+        # Summary
+        $totalDrives = $diskInfo.Count
+        $totalSize = ($diskInfo | Measure-Object -Property TotalSizeBytes -Sum).Sum
+        $totalUsed = ($diskInfo | Measure-Object -Property UsedSpaceBytes -Sum).Sum
+        
+        Write-Host "`nSummary:" -ForegroundColor Magenta
+        Write-Host "  Total Drives: $totalDrives"
+        Write-Host "  Total Storage: $(Format-Bytes -Size $totalSize)"
+        Write-Host "  Total Used: $(Format-Bytes -Size $totalUsed)"
+    }
+    else {
+        Write-Warning "No disk drives found or accessible."
+    }
+}
+catch {
+    Write-Error "An error occurred: $($_.Exception.Message)"
+    exit 1
+}
+
+Write-Host "`nScript completed successfully." -ForegroundColor Green
