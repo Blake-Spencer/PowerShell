@@ -1,5 +1,3 @@
-#Requires -Version 5.1
-
 <#
 .SYNOPSIS
     Displays disk space information for all drives on the system.
@@ -34,7 +32,7 @@
     Shows disk space in detailed list format
 
 .NOTES
-    Author: PowerShell Assistant
+    Author: SIG Blake Spencer
     Version: 1.0
 #>
 
@@ -89,7 +87,6 @@ function Get-DiskSpaceInfo {
                 $diskInfo += [PSCustomObject]@{
                     Drive = $drive.DeviceID
                     Label = if ($drive.VolumeName) { $drive.VolumeName } else { "No Label" }
-                    FileSystem = $drive.FileSystem
                     TotalSize = Format-Bytes -Size $drive.Size
                     UsedSpace = Format-Bytes -Size $usedSpace
                     FreeSpace = Format-Bytes -Size $drive.FreeSpace
@@ -118,7 +115,6 @@ function Show-DiskSpaceTable {
     $DiskInfo | Format-Table -AutoSize -Property @(
         @{Name="Drive"; Expression={$_.Drive}; Width=6},
         @{Name="Label"; Expression={$_.Label}; Width=15},
-        @{Name="FileSystem"; Expression={$_.FileSystem}; Width=10},
         @{Name="Total Size"; Expression={$_.TotalSize}; Width=12; Align="Right"},
         @{Name="Used Space"; Expression={$_.UsedSpace}; Width=12; Align="Right"},
         @{Name="Free Space"; Expression={$_.FreeSpace}; Width=12; Align="Right"},
@@ -136,7 +132,6 @@ function Show-DiskSpaceList {
     foreach ($disk in $DiskInfo) {
         Write-Host "`nDrive: $($disk.Drive)" -ForegroundColor Yellow
         Write-Host "  Label: $($disk.Label)"
-        Write-Host "  File System: $($disk.FileSystem)"
         Write-Host "  Total Size: $($disk.TotalSize)"
         Write-Host "  Used Space: $($disk.UsedSpace)"
         Write-Host "  Free Space: $($disk.FreeSpace)"
